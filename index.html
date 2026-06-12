@@ -13,6 +13,7 @@
     .draggable { cursor: move; }
     .dragging { opacity: 0.5; background-color: #f3f4f6; }
     .grade-name { cursor: text; }
+    .formula-box { font-size: 1.05rem; line-height: 1.6; }
   </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
@@ -30,10 +31,7 @@
     
     <div class="mt-8 bg-gray-50 rounded-2xl p-6 max-w-4xl mx-auto">
       <h3 class="font-semibold text-lg mb-3 text-gray-700">計算公式</h3>
-      <div class="formula bg-white p-5 rounded-xl border border-gray-200 text-left inline-block">
-        <strong>上落層數期望值：</strong><br>
-        <span class="text-lg font-medium">E = (P(操場) × |層差| + P(圖書館) × |層差| + P(教員室) × |層差|) × 2</span>
-      </div>
+      <div id="dynamicFormula" class="formula-box bg-white p-6 rounded-xl border border-gray-200 text-left"></div>
     </div>
   </div>
 
@@ -75,11 +73,12 @@
     </div>
   </div>
 
-  <!-- 最佳化按鈕 -->
+  <!-- 全部排序按鈕 -->
   <div class="bg-white rounded-2xl shadow-lg p-6 mb-8">
     <button onclick="showAllConfigurations()" 
             class="w-full bg-gradient-to-r from-purple-600 to-violet-600 text-white py-5 rounded-2xl font-semibold text-xl flex items-center justify-center gap-3 hover:brightness-110 transition">
-      <i class="fa-solid fa-list-ol"></i> 顯示 Top 30 最佳全校配搭
+      <i class="fa-solid fa-list"></i> 
+      顯示全部排序
     </button>
   </div>
 
@@ -99,8 +98,17 @@
 <div id="optModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50">
   <div class="bg-white rounded-3xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-auto">
     <div class="p-8">
-      <h2 class="text-2xl font-bold mb-6 flex items-center gap-3" id="modalTitle"></h2>
-      <div id="optResults"></div>
+      <h2 class="text-2xl font-bold mb-6 flex items-center gap-3" id="modalTitle">全部排序配置</h2>
+      
+      <div class="flex gap-3 mb-6">
+        <button onclick="toggleSortMode()" 
+                id="modalSortBtn"
+                class="flex-1 py-3 rounded-2xl font-medium border-2 border-purple-600 text-purple-600 hover:bg-purple-50 transition">
+          切換為由高至低排序
+        </button>
+      </div>
+
+      <div id="optResults" class="max-h-[65vh] overflow-auto"></div>
       <button onclick="closeModal()" class="mt-6 w-full py-3 bg-gray-200 hover:bg-gray-300 rounded-2xl font-medium">關閉</button>
     </div>
   </div>
@@ -126,6 +134,17 @@ let destinations = JSON.parse(JSON.stringify(defaultDestinations));
 let grades = JSON.parse(JSON.stringify(defaultGrades));
 
 const colors = ['#ef4444', '#3b82f6', '#eab308', '#22c55e', '#f97316'];
+let currentSortMode = 'lowToHigh';
+
+function updateFormulaDisplay() {
+  const container = document.getElementById('dynamicFormula');
+  let terms = destinations.map(dest => `P(${dest.name}) × |層差|`).join(' + ');
+  const html = `
+    <strong>上落層數期望值：</strong><br>
+    E = (${terms}) × 2
+  `;
+  container.innerHTML = html;
+}
 
 function calculateExpectation(grade, floor = null) {
   const f = floor !== null ? floor : grade.floor;
@@ -152,6 +171,7 @@ function resetToDefault() {
     grades = JSON.parse(JSON.stringify(defaultGrades));
     renderDestinations();
     renderTable();
+    updateFormulaDisplay();
   }
 }
 
@@ -170,9 +190,11 @@ function renderDestinations() {
     `;
     container.appendChild(div);
   });
+  updateFormulaDisplay(); // 更新公式
 }
 
 function renderTable() {
+  // ... (表格渲染保持不變，省略以節省空間)
   const thead = document.getElementById('tableHead');
   const tbody = document.getElementById('gradeBody');
   thead.innerHTML = '';
@@ -242,6 +264,7 @@ function renderTable() {
   document.getElementById('overallIndex').textContent = avg.toFixed(3);
 }
 
+// 其餘功能保持不變（updateGradeName, updateGrade, updateProb, addDestination, deleteDestination 等）
 function updateGradeName(index, newName) {
   grades[index].name = newName.trim() || `年級${index+1}`;
   renderTable();
@@ -257,7 +280,8 @@ function updateProb(gIndex, pIndex, value) {
 }
 function updateDestination(index, field, value) { 
   destinations[index][field] = field === 'floor' ? parseFloat(value) : value; 
-  renderTable(); 
+  renderTable();
+  updateFormulaDisplay(); // 名稱改變時更新公式
 }
 
 function addDestination() { 
@@ -284,44 +308,46 @@ function deleteGrade(index) {
   else alert("至少保留一個年級！"); 
 }
 
-// 修正後的最佳化函數
+// 顯示全部排序
 function showAllConfigurations() {
   const modal = document.getElementById('optModal');
   const results = document.getElementById('optResults');
   const title = document.getElementById('modalTitle');
 
-  title.textContent = "Top 30 最佳全校年級樓層配搭";
+  title.textContent = `全部 ${factorial(grades.length)} 種年級排序配置`;
 
-  let possibleFloors = [];
-  for (let f = 0; f <= 8; f += 0.5) possibleFloors.push(f);
-
+  let currentFloors = grades.map(g => g.floor);
   let configurations = [];
 
-  for (let attempt = 0; attempt < 2500; attempt++) {
-    let selectedFloors = [...possibleFloors].sort(() => Math.random() - 0.5).slice(0, grades.length);
-    let shuffledGrades = [...grades].sort(() => Math.random() - 0.5);
-    let assignment = {};
-    
-    shuffledGrades.forEach((grade, i) => {
-      assignment[grade.id] = selectedFloors[i];
-    });
-
-    const avg = calculateSchoolAverage(assignment);
-    configurations.push({assignment, avg});
+  function permute(arr, start = 0) {
+    if (start === arr.length - 1) {
+      let assignment = {};
+      grades.forEach((grade, i) => {
+        assignment[grade.id] = arr[i];
+      });
+      const avg = calculateSchoolAverage(assignment);
+      configurations.push({assignment, avg});
+      return;
+    }
+    for (let i = start; i < arr.length; i++) {
+      [arr[start], arr[i]] = [arr[i], arr[start]];
+      permute([...arr], start + 1);
+      [arr[start], arr[i]] = [arr[i], arr[start]];
+    }
   }
 
-  configurations.sort((a, b) => a.avg - b.avg);
-  configurations = configurations.slice(0, 30);
+  permute([...currentFloors]);
 
-  let html = `<p class="text-gray-600 mb-6">以下為前 30 種不同的最佳配置（全校加權平均指數由低到高）：</p>`;
+  configurations.sort((a, b) => currentSortMode === 'lowToHigh' ? a.avg - b.avg : b.avg - a.avg);
+
+  let html = `<p class="text-gray-600 mb-6">以下為全部 ${configurations.length} 種排序結果（${currentSortMode === 'lowToHigh' ? '由低至高' : '由高至低'}）：</p>`;
 
   configurations.forEach((config, rank) => {
-    const isBest = rank === 0;
     html += `
-      <div class="border rounded-2xl p-5 mb-4 ${isBest ? 'bg-green-50 border-green-400' : 'bg-white'}">
+      <div class="border rounded-2xl p-5 mb-4 bg-white">
         <div class="flex justify-between items-center mb-4">
-          <span class="font-bold text-xl ${isBest ? 'text-green-600' : 'text-gray-700'}">第 ${rank+1} 名</span>
-          <span class="font-mono text-2xl font-bold ${isBest ? 'text-green-600' : 'text-gray-700'}">${config.avg.toFixed(3)}</span>
+          <span class="font-bold text-xl">第 ${rank+1} 種</span>
+          <span class="font-mono text-2xl font-bold">${config.avg.toFixed(3)}</span>
         </div>
         <div class="grid grid-cols-2 md:grid-cols-5 gap-x-6 gap-y-2 text-sm">`;
     
@@ -342,6 +368,17 @@ function showAllConfigurations() {
   modal.classList.remove('hidden');
 }
 
+function factorial(n) {
+  return n <= 1 ? 1 : n * factorial(n - 1);
+}
+
+function toggleSortMode() {
+  currentSortMode = currentSortMode === 'lowToHigh' ? 'highToLow' : 'lowToHigh';
+  document.getElementById('modalSortBtn').textContent = 
+    currentSortMode === 'lowToHigh' ? '切換為由高至低排序' : '切換為由低至高排序';
+  showAllConfigurations();
+}
+
 function closeModal() {
   document.getElementById('optModal').classList.add('hidden');
 }
@@ -350,6 +387,7 @@ function closeModal() {
 window.onload = () => {
   renderDestinations();
   renderTable();
+  updateFormulaDisplay();
 };
 </script>
 
